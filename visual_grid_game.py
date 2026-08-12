@@ -50,12 +50,30 @@ class VisualGridHuntGame:
         self.collision = False
 
     def get_percept(self) -> dict:
+        """Return a local percept consisting of booleans about the cell directly ahead of the agent.
+        The percept no longer includes the agent's absolute coordinates.
+        """
+        # Determine the agent's facing direction; default to 'Up' if not set
+        direction = getattr(self, 'agent_dir', 'Up')
+        delta = {
+            'Up': (0, 1),
+            'Down': (0, -1),
+            'Left': (-1, 0),
+            'Right': (1, 0)
+        }
+        dx, dy = delta.get(direction, (0, 1))
+        next_x = self.agent_pos[0] + dx
+        next_y = self.agent_pos[1] + dy
+        # Position of the cell ahead (may be out of bounds)
+        pos_ahead = (next_x, next_y)
+        # Determine if the cell ahead is a wall (or outside the grid)
+        out_of_bounds = not (0 <= next_x < self.width and 0 <= next_y < self.height)
+        wall_ahead = out_of_bounds or pos_ahead in self.walls
+        # Determine if food is present in the cell ahead
+        food_here = pos_ahead in self.food_positions
         return {
-            'agent_pos': list(self.agent_pos),
-            'opponent_positions': [list(op) for op in self.opponents],
-            'smells_food': tuple(self.agent_pos) in self.food_positions,
-            'smells_toxin': tuple(self.agent_pos) in self.toxic_traps,
-            'hit_wall': tuple(self.agent_pos) in self.walls,
+            'wall_ahead': wall_ahead,
+            'food_here': food_here,
             'collision': self.collision,
             'score': self.score,
             'remaining_food': len(self.food_positions)

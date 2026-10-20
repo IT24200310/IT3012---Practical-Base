@@ -3,6 +3,7 @@ import random
 from collections import deque
 import heapq
 import math
+from logic_engine import KnowledgeBase
 
 class GreedyGridAgent:
     """A simple agent that tries to move around systematically to clear the grid."""
@@ -22,6 +23,9 @@ class SearchAgent(GreedyGridAgent):
         self.plan = []
         self.active_algo = 'AStar'
         self.pos = (0, 0)
+        self.kb = KnowledgeBase()
+        self.kb.tell_rule(['TargetVisible', 'HasDust'], 'SafeToEngage')
+        self.kb.tell_rule(['SafeToEngage', 'BloodseekerMissing'], 'Retreat')
         
     def _get_neighbors(self, state, percept):
         x, y = state
@@ -79,7 +83,7 @@ class SearchAgent(GreedyGridAgent):
     def euclidean_distance(self, pos, goal):
         return math.sqrt((pos[0] - goal[0])**2 + (pos[1] - goal[1])**2)
 
-    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
+    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan', tile_facts=None):
         frontier = []
         h = self.manhattan_distance(start_pos, goal_pos) if heuristic_type == 'manhattan' else self.euclidean_distance(start_pos, goal_pos)
         heapq.heappush(frontier, (h, 0, start_pos, []))
@@ -87,6 +91,7 @@ class SearchAgent(GreedyGridAgent):
         
         w, h_grid = grid_size
         walls_set = set(walls)
+        tile_facts = tile_facts or {}
         
         while frontier:
             f_cost, g_cost, current_pos, path_taken = heapq.heappop(frontier)
@@ -102,6 +107,12 @@ class SearchAgent(GreedyGridAgent):
                     nx, ny = x + dx, y + dy
                     if 0 <= nx < w and 0 <= ny < h_grid and (nx, ny) not in walls_set:
                         nxt_pos = (nx, ny)
+                        self.kb.clear_facts()
+                        for fact in tile_facts.get(nxt_pos, []):
+                            self.kb.tell_fact(fact)
+                        self.kb.forward_chain()
+                        if 'Retreat' in self.kb.facts:
+                            continue
                         if nxt_pos not in reached_states:
                             g_new = g_cost + 1
                             h_new = self.manhattan_distance(nxt_pos, goal_pos) if heuristic_type == 'manhattan' else self.euclidean_distance(nxt_pos, goal_pos)
@@ -122,7 +133,17 @@ class SearchAgent(GreedyGridAgent):
             elif self.active_algo == 'UCS':
                 self.plan = self.ucs_search(self.pos, closest_food, percept)
             elif self.active_algo == 'AStar':
-                self.plan = self.astar_search(self.pos, closest_food, percept['walls'], percept['grid_size'])
+                tile_facts = {
+                    (1, 0): ['TargetVisible', 'HasDust', 'BloodseekerMissing'],
+                    (0, 1): ['TargetVisible', 'HasDust'],
+                }
+                self.plan = self.astar_search(
+                    self.pos,
+                    closest_food,
+                    percept['walls'],
+                    percept['grid_size'],
+                    tile_facts=tile_facts,
+                )
             if not self.plan:
                 return 'Stay'
         
